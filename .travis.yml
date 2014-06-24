@@ -3,6 +3,7 @@ python:
 - "2.7"
 env:
 - FLASK=0.9
+- SECRET_KEY=jklasdfjadjsfahsuyo8u7p0478980789079078324125
 
 install: 
 - pip install -r requirements.txt --use-mirrors
