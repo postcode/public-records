@@ -1,9 +1,7 @@
 language: python
 python:
 - "2.7"
-- "2.6"
 env:
-- FLASK=0.9
 - SECRET_KEY=jklasdfjadjsfahsuyo8u7p0478980789079078324125
 
 install: 
