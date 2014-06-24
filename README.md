@@ -1,5 +1,5 @@
-RecordTrac 
-==============
+RecordTrac [![Build Status](https://travis-ci.org/postcode/recordtrac.svg)](https://travis-ci.org/postcode/recordtrac)
+==========
 
 Hi there!
 
