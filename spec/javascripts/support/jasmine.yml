@@ -12,6 +12,8 @@
 #   - dist/**/*.js
 #
 src_files:
+    - static/js/backbone-min.js
+    - static/js/requests.js
 
 # stylesheets
 #
@@ -62,8 +64,7 @@ spec_files:
 #
 # src_dir: public
 #
-src_dir: ../../../public_records_portal/static/js
-
+src_dir: public_records_portal
 # spec_dir
 #
 # Spec directory path. Your spec_files must be returned relative to this path.
