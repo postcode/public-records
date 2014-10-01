@@ -2,19 +2,9 @@ import os
 from public_records_portal.prflask import app
 import unittest
 import random, string
-import tempfile
+
 
 class PublicRecordsTestCase(unittest.TestCase):
-
-	def setUp(self):
-		self.db_fd, app.config['DATABASE'] = tempfile.mkstemp()
-		app.config['TESTING'] = True
-		self.app = app.test_client()
-		init_db()
-
-	def tearDown(self):
-		os.close(self.db_fd)
-		os.unlink(app.config['DATABASE'])
 
 	def random_content(self, content_type):
 		return "This is a new %s and some random string %s" %(content_type, ''.join(random.choice(string.lowercase) for i in range(10)))
