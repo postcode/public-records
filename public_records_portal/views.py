@@ -386,32 +386,19 @@ def fetch_requests():
 
 	# TODO(cj@postcode.io): This map is pretty kludgy, we should be detecting columns and auto
 	# magically making them fields in the JSON objects we return.
-	if current_user.is_anonymous():
-		results = map(lambda r: {     
-			  "id":           r.id, \
-			  "text":         helpers.clean_text(r.text), \
-			  "date_created": helpers.date(r.date_received or r.date_created), \
-			  "department":   r.department_name(), \
-			  "status":       r.status, \
-			  # The following two attributes are defined as model methods,
-			  # and not regular SQLAlchemy attributes.
-			  "contact_name": r.point_person_name(), \
-			  "solid_status": r.solid_status()
-			   }, results)
-	else:
-		results = map(lambda r: {     
-			  "id":           r.id, \
-			  "text":         helpers.clean_text(r.text), \
-			  "date_created": helpers.date(r.date_received or r.date_created), \
-			  "department":   r.department_name(), \
-			  "requester":    r.requester_name(), \
-			  "due_date":     format_date(r.due_date), \
-			  "status":       r.status, \
-			  # The following two attributes are defined as model methods,
-			  # and not regular SQLAlchemy attributes.
-			  "contact_name": r.point_person_name(), \
-			  "solid_status": r.solid_status()
-			   }, results)
+	results = map(lambda r: {     
+		  "id":           r.id, \
+		  "text":         helpers.clean_text(r.text), \
+		  "date_created": helpers.date(r.date_received or r.date_created), \
+		  "department":   r.department_name(), \
+		  "requester":    r.requester_name(), \
+		  "due_date":     format_date(r.due_date), \
+		  "status":       r.status, \
+		  # The following two attributes are defined as model methods,
+		  # and not regular SQLAlchemy attributes.
+		  "contact_name": r.point_person_name(), \
+		  "solid_status": r.solid_status()
+		   }, results)
 
 	matches = {
 		"objects": 		results,
@@ -451,16 +438,15 @@ def login(email=None, password=None):
 		if user_to_login:
 			login_user(user_to_login)
 			redirect_url = get_redirect_target()
-			if 'temporary_login' in redirect_url: # Redirect to update password
-				return render_template('update_password.html', user_id = get_user_id())
 			if 'login' in redirect_url or 'logout' in redirect_url:
 				return redirect(url_for('index'))
-			if "city" not in redirect_url:
+			else:
+				if "city" not in redirect_url:
 					redirect_url = redirect_url.replace("/request/", "/city/request/")
-			return redirect(redirect_url)
+				return redirect(redirect_url)
 		else:
 			app.logger.info("\n\nLogin failed (due to incorrect e-mail/password combo) for email: %s." % email)
-			return render_template('error.html', message = "That e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
+			return render_template('error.html', message = "Your e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
 		app.logger.info("\n\nLogin failed for email: %s." % email)
 		return render_template('error.html', message="Something went wrong.", user_id = get_user_id())
 	else:
@@ -471,19 +457,17 @@ def login(email=None, password=None):
 			return render_template('generic.html', message = "If you work for the %s and are trying to log into RecordTrac, please log in by clicking City login in the upper-right corner of this page." % app.config['AGENCY_NAME'])
 
 def reset_password(email=None):
-	after_reset = False
-	reset_success = False
 	if request.method == 'POST':
-		after_reset = True
 		email = request.form['email']
 		password = set_random_password(email)
 		if password:
 			send_prr_email(page = app.config['APPLICATION_URL'], recipients = [email], subject = "Your temporary password", template = "password_email.html", include_unsubscribe_link = False, password = password)
-			reset_success = True
 			app.logger.info("\n\nPassword reset sent for email: %s." % email)
+			message = "Thanks! You should receive an e-mail shortly with instructions on how to login and update your password."
 		else:
 			app.logger.info("\n\nPassword reset attempted and denied for email: %s." % email)
-	return render_template('reset_password.html', after_reset = after_reset, reset_success = reset_success)
+			message = "Looks like you're not a user already. Currently, this system requires logins only for city employees. "
+	return render_template('reset_password.html', message = message)
 
 
 @login_required
