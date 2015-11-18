@@ -65,11 +65,12 @@ def new_request(passed_recaptcha = False, data = None):
 			offline_submission_type = data['format_received']
 		if 'date_received' in data: # From the jQuery datepicker
 			date_received = data['date_received']
-			try:
-				date_received = datetime.strptime(date_received, '%m/%d/%Y') 
-				date_received = date_received + timedelta(hours = 7) # This is somewhat of a hack, but we need to get this back in UTC (+7 hours offset from Pacific Time) time but still treat it as a 'naive' datetime object
-			except ValueError:
-				return render_template('error.html', message = "Please use the datepicker to select a date.")
+			if date_received != "":
+				try:
+					date_received = datetime.strptime(date_received, '%m/%d/%Y') 
+					date_received = date_received + timedelta(hours = 7) # This is somewhat of a hack, but we need to get this back in UTC (+7 hours offset from Pacific Time) time but still treat it as a 'naive' datetime object
+				except ValueError:
+					return render_template('error.html', message = "Please use the datepicker to select a date.")
 		app.logger.info("\n\n Date received: %s" % date_received)
 		request_id, is_new = make_request(text = request_text, email = email, user_id = user_id, alias = alias, phone = phone, passed_recaptcha = passed_recaptcha, department = data['request_department'], offline_submission_type = offline_submission_type, date_received = date_received)
 		if is_new:
@@ -438,15 +439,16 @@ def login(email=None, password=None):
 		if user_to_login:
 			login_user(user_to_login)
 			redirect_url = get_redirect_target()
+			if 'temporary_login' in redirect_url: # Redirect to update password
+				return render_template('update_password.html', user_id = get_user_id())
 			if 'login' in redirect_url or 'logout' in redirect_url:
 				return redirect(url_for('index'))
-			else:
-				if "city" not in redirect_url:
+			if "city" not in redirect_url:
 					redirect_url = redirect_url.replace("/request/", "/city/request/")
-				return redirect(redirect_url)
+			return redirect(redirect_url)
 		else:
 			app.logger.info("\n\nLogin failed (due to incorrect e-mail/password combo) for email: %s." % email)
-			return render_template('error.html', message = "Your e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
+			return render_template('error.html', message = "That e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
 		app.logger.info("\n\nLogin failed for email: %s." % email)
 		return render_template('error.html', message="Something went wrong.", user_id = get_user_id())
 	else:
@@ -457,17 +459,19 @@ def login(email=None, password=None):
 			return render_template('generic.html', message = "If you work for the %s and are trying to log into RecordTrac, please log in by clicking City login in the upper-right corner of this page." % app.config['AGENCY_NAME'])
 
 def reset_password(email=None):
+	after_reset = False
+	reset_success = False
 	if request.method == 'POST':
+		after_reset = True
 		email = request.form['email']
 		password = set_random_password(email)
 		if password:
 			send_prr_email(page = app.config['APPLICATION_URL'], recipients = [email], subject = "Your temporary password", template = "password_email.html", include_unsubscribe_link = False, password = password)
+			reset_success = True
 			app.logger.info("\n\nPassword reset sent for email: %s." % email)
-			message = "Thanks! You should receive an e-mail shortly with instructions on how to login and update your password."
 		else:
 			app.logger.info("\n\nPassword reset attempted and denied for email: %s." % email)
-			message = "Looks like you're not a user already. Currently, this system requires logins only for city employees. "
-	return render_template('reset_password.html', message = message)
+	return render_template('reset_password.html', after_reset = after_reset, reset_success = reset_success)
 
 
 @login_required
