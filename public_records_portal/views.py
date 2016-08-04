@@ -3,11 +3,13 @@
 
 from flask import render_template, request, redirect, url_for, jsonify
 from flask.ext.login import LoginManager, login_user, logout_user, current_user, login_required
+from flaskext.browserid import BrowserID
 from public_records_portal import app
 from filters import *
 from prr import add_resource, update_resource, make_request, close_request
 from db_helpers import *
-import departments
+from db_helpers import get_user_by_id # finds a user by their id
+from db_helpers import get_user # finds a user based on BrowserID response
 import os, json
 from urlparse import urlparse, urljoin
 from notifications import send_prr_email, format_date
@@ -21,16 +23,17 @@ from flask import jsonify, request, Response
 import anyjson
 import helpers
 import csv_export
-import csv
 from datetime import datetime, timedelta
 
 # Initialize login
+
 login_manager = LoginManager()
+login_manager.user_loader(get_user_by_id)
 login_manager.init_app(app)
 
-# Initialize cache
-cache = Cache()
-cache.init_app(app, config={'CACHE_TYPE': 'simple'})
+browser_id = BrowserID()
+browser_id.user_loader(get_user)
+browser_id.init_app(app)
 
 # Set flags:
 
@@ -65,11 +68,12 @@ def new_request(passed_recaptcha = False, data = None):
 			offline_submission_type = data['format_received']
 		if 'date_received' in data: # From the jQuery datepicker
 			date_received = data['date_received']
-			try:
-				date_received = datetime.strptime(date_received, '%m/%d/%Y') 
-				date_received = date_received + timedelta(hours = 7) # This is somewhat of a hack, but we need to get this back in UTC (+7 hours offset from Pacific Time) time but still treat it as a 'naive' datetime object
-			except ValueError:
-				return render_template('error.html', message = "Please use the datepicker to select a date.")
+			if date_received != "":
+				try:
+					date_received = datetime.strptime(date_received, '%m/%d/%Y') 
+					date_received = date_received + timedelta(hours = 7) # This is somewhat of a hack, but we need to get this back in UTC (+7 hours offset from Pacific Time) time but still treat it as a 'naive' datetime object
+				except ValueError:
+					return render_template('error.html', message = "Please use the datepicker to select a date.")
 		app.logger.info("\n\n Date received: %s" % date_received)
 		request_id, is_new = make_request(text = request_text, email = email, user_id = user_id, alias = alias, phone = phone, passed_recaptcha = passed_recaptcha, department = data['request_department'], offline_submission_type = offline_submission_type, date_received = date_received)
 		if is_new:
@@ -79,11 +83,13 @@ def new_request(passed_recaptcha = False, data = None):
 		app.logger.info("\n\nDuplicate request entered: %s" % request_text)
 		return render_template('error.html', message = "Your request is the same as /request/%s" % request_id)
 	else:
-		doc_types = os.path.exists(os.path.join(app.root_path, 'static/json/doctypes.json'))
+		routing_available = False
+		if 'LIAISONS_URL' in app.config:
+			routing_available = True
 		if user_id:
-			return render_template('offline_request.html', doc_types = doc_types, user_id = user_id)
+			return render_template('offline_request.html', routing_available = routing_available, user_id = user_id)
 		else:
-			return render_template('new_request.html', doc_types = doc_types, user_id = user_id)
+			return render_template('new_request.html', routing_available = routing_available, user_id = user_id)
 
 def to_csv():
 	if get_user_id():
@@ -168,11 +174,18 @@ def show_request(request_id, template = None):
 	return render_template(template, req = req, user_id = get_user_id())
 
 def staff_to_json():
-	users = User.query.filter(User.department != None).all()
+	users = User.query.filter(User.is_staff == True).all()
 	staff_data = []
 	for u in users:
 		staff_data.append({'alias': u.alias, 'email': u.email})
 	return jsonify(**{'objects': staff_data})
+
+def departments_to_json():
+	departments = Department.query.all()
+	department_data = []
+	for d in departments:
+		department_data.append({'department': d.name})
+	return jsonify(**{'objects': department_data})
 
 def docs():
 	return redirect('http://codeforamerica.github.io/public-records/docs/1.0.0')
@@ -233,9 +246,7 @@ def close(request_id = None):
 def requests():
 	app.logger.debug("Processing requests.")
 	try:
-		departments_json = open(os.path.join(app.root_path, 'static/json/list_of_departments.json'))
-		list_of_departments = json.load(departments_json)
-		departments = sorted(list_of_departments, key=unicode.lower)
+		departments = [d.name for d in Department.query.all()]
 		user_id = get_user_id()
 		total_requests_count = get_count("Request")
 		template = 'all_requests.html'
@@ -386,19 +397,34 @@ def fetch_requests():
 
 	# TODO(cj@postcode.io): This map is pretty kludgy, we should be detecting columns and auto
 	# magically making them fields in the JSON objects we return.
-	results = map(lambda r: {     
-		  "id":           r.id, \
-		  "text":         helpers.clean_text(r.text), \
-		  "date_created": helpers.date(r.date_received or r.date_created), \
-		  "department":   r.department_name(), \
-		  "requester":    r.requester_name(), \
-		  "due_date":     format_date(r.due_date), \
-		  "status":       r.status, \
-		  # The following two attributes are defined as model methods,
-		  # and not regular SQLAlchemy attributes.
-		  "contact_name": r.point_person_name(), \
-		  "solid_status": r.solid_status()
-		   }, results)
+
+	if current_user.is_anonymous():
+		results = map(lambda r: {     
+			  "id":           r.id, \
+			  "text":         helpers.clean_text(r.text), \
+			  "date_created": helpers.date(r.date_received or r.date_created), \
+			  "department":   r.department_name(), \
+			  "status":       r.status, \
+			  # The following two attributes are defined as model methods,
+			  # and not regular SQLAlchemy attributes.
+			  "contact_name": r.point_person_name(), \
+			  "solid_status": r.solid_status()
+			   }, results)
+	else:
+		results = map(lambda r: {     
+			  "id":           r.id, \
+			  "text":         helpers.clean_text(r.text), \
+			  "date_created": helpers.date(r.date_received or r.date_created), \
+			  "department":   r.department_name(), \
+			  "requester":    r.requester_name(), \
+			  "due_date":     format_date(r.due_date), \
+			  "status":       r.status, \
+			  # The following two attributes are defined as model methods,
+			  # and not regular SQLAlchemy attributes.
+			  "contact_name": r.point_person_name(), \
+			  "solid_status": r.solid_status()
+			   }, results)
+
 
 	matches = {
 		"objects": 		results,
@@ -409,15 +435,6 @@ def fetch_requests():
 		}
 	response = anyjson.serialize(matches)
 	return Response(response, mimetype = "application/json")
-
-@login_manager.unauthorized_handler
-def unauthorized():
-	return render_template('alpha.html')
-
-@login_manager.user_loader
-def load_user(userid):
-	user =get_obj("User", userid)
-	return user
 
 def any_page(page):
 	try:
@@ -438,15 +455,16 @@ def login(email=None, password=None):
 		if user_to_login:
 			login_user(user_to_login)
 			redirect_url = get_redirect_target()
+			if 'temporary_login' in redirect_url: # Redirect to update password
+				return render_template('update_password.html', user_id = get_user_id())
 			if 'login' in redirect_url or 'logout' in redirect_url:
 				return redirect(url_for('index'))
-			else:
-				if "city" not in redirect_url:
+			if "city" not in redirect_url:
 					redirect_url = redirect_url.replace("/request/", "/city/request/")
-				return redirect(redirect_url)
+			return redirect(redirect_url)
 		else:
 			app.logger.info("\n\nLogin failed (due to incorrect e-mail/password combo) for email: %s." % email)
-			return render_template('error.html', message = "Your e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
+			return render_template('error.html', message = "That e-mail/ password combo didn't work. You can always <a href='/reset_password'>reset your password</a>.")
 		app.logger.info("\n\nLogin failed for email: %s." % email)
 		return render_template('error.html', message="Something went wrong.", user_id = get_user_id())
 	else:
@@ -457,17 +475,19 @@ def login(email=None, password=None):
 			return render_template('generic.html', message = "If you work for the %s and are trying to log into RecordTrac, please log in by clicking City login in the upper-right corner of this page." % app.config['AGENCY_NAME'])
 
 def reset_password(email=None):
+	after_reset = False
+	reset_success = False
 	if request.method == 'POST':
+		after_reset = True
 		email = request.form['email']
 		password = set_random_password(email)
 		if password:
 			send_prr_email(page = app.config['APPLICATION_URL'], recipients = [email], subject = "Your temporary password", template = "password_email.html", include_unsubscribe_link = False, password = password)
+			reset_success = True
 			app.logger.info("\n\nPassword reset sent for email: %s." % email)
-			message = "Thanks! You should receive an e-mail shortly with instructions on how to login and update your password."
 		else:
 			app.logger.info("\n\nPassword reset attempted and denied for email: %s." % email)
-			message = "Looks like you're not a user already. Currently, this system requires logins only for city employees. "
-	return render_template('reset_password.html', message = message)
+	return render_template('reset_password.html', after_reset = after_reset, reset_success = reset_success)
 
 
 @login_required
