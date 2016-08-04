@@ -31,6 +31,7 @@
   <!-- google analytics -->
     <!-- for later: guide to add event-driven analytics http://www.sitepoint.com/google-analytics-track-javascript-ajax-events/ -->
   <script>
+
   (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
   (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
   m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
@@ -39,7 +40,10 @@
   ga('create', 'UA-41730935-1', 'herokuapp.com');
   ga('send', 'pageview');
   </script>
-
+  <!-- auth_script requires jquery and Mozilla's 'include.js' shim -->
+  <script type="text/javascript" src="{{ url_for('static', filename='js/plugins/jquery-1.10.1.min.js') }}"></script> 
+  <script type="text/javascript" src="{{ url_for('static', filename='js/plugins/include.js') }}"></script>
+  <script type="text/javascript">{{ auth_script|safe }}</script>
 
   </head>
   
@@ -55,7 +59,7 @@
               <span class="icon-bar"></span>
             </a>
             <!-- Be sure to leave the brand out there if you want it shown -->
-            <a class="brand" href="/landing"><img src="{{ url_for('static', filename = 'images/logo.png')}}" alt="{{config['AGENCY_NAME']}} logo" width="35" height="35"/><strong> RecordTrac</strong><small id="beta" class="text-warning"></small></a>
+            <a class="brand" href="/landing"><img id="logo_nav" src="{{config['LOGO_ON_BLACK_URL']}}" alt="{{config['AGENCY_NAME']}} logo" width="35" height="35"/><strong> RecordTrac</strong><small id="beta" class="text-warning"></small></a>
             <div class="nav-collapse navbar-responsive-collapse collapse" style="height: 0px;">
               <ul class="nav tabs">
                 {% if user_id %}
@@ -71,53 +75,24 @@
                 {% endif %}
               </ul>
             </div>
-            <!-- Login area -->
+          <!-- Login area -->
             {% if user_id %}
             <ul class="nav pull-right">
               <li class="dropdown">
-                <a class="dropdown-toggle" href="#" data-toggle="dropdown">{{ "alias" | get_attribute(user_id, "User") }} <strong class="caret"></strong></a>
-                <div id="logout-dropdown" class="dropdown-menu" >
-            
                   <!-- Logout form here -->
-                  <form class="form-horizontal" id="logoutForm" action="/logout">
-                    <input id="logout_form" type="submit" value="Logout" title="logout_button" class="pull-right btn btn-link"/>
-                  </form>
-
-                </div>
+                  <button id="browserid-logout">{{config['AGENCY_NAME']}} Logout</button>
               </li>
             </ul>
 
             {% else %}
             <ul class="nav pull-right">
               <li class="dropdown">
-                <a class="dropdown-toggle" href="#" data-toggle="dropdown">{{config['AGENCY_NAME']}} login <strong class="caret"></strong></a>
-                <div class="dropdown-menu" style="padding: 15px; padding-bottom: 0px;">
-               
                 <!-- Login form here -->
-                  <form class="form-horizontal" method="post" id="loginForm" action="/login">
-                    <!-- <div class="control-group"> -->
-                      <label>Email</label>
-                      <!-- <div class="controls"> -->
-                        <input type="text" class="input-medium" name="email" title="input_email" placeholder="you@email.com">
-                      <!-- </div> -->
-                    <!-- </div> -->
-                    <!-- <div class="control-group"> -->
-                      <label>Password</label>
-                      <!-- <div class="controls"> -->
-                        <input type="password" class="input-small" name="password" title="input_password" placeholder="password">
-                      <!-- </div> -->
-                    <!-- </div> -->
-                    <!-- <div class="control-group"> -->
-                      <!-- <div class="controls"> -->
-                        <input type="submit" value="City login" title="login_button" class="btn"/>
-                      <!-- </div> -->
-                   <!--  </div> -->
-                  </form>
-
-                </div>
+                  <button id="browserid-login">{{config['AGENCY_NAME']}} login</button>
               </li>
             </ul>
             {% endif %}
+
             <!-- Everything you want hidden at 940px or less, place within here -->
             <div class="nav-collapse collapse">
               <!-- .nav, .navbar-search, .navbar-form, etc -->
@@ -145,27 +120,28 @@
       
     {% block footer %}
       <div id="footer" class="well well-small footer">
-        <p class="text-center">Made by <!-- <a href="http://codeforamerica.org/2013-partners/oakland/"> -->Code for America 2013 Fellows<!-- </a> --></p>
-        <p class="text-center"><a href="/signup">Get the app</a> for your agency or <a href="https://github.com/postcode/recordtrac#recordtrac-"> view project info <i class="icon-github"></i></a>.</p>
+        <p class="text-center">For more information about this application or instructions on how to get the app for your agency, <a href="/about"> view project info and documentation</a>.</p>
+        <p class="text-center">Made by the <a href="http://www.codeforamerica.org/apps/recordtrac/">Code for America 2013 Fellows</a></p>
       </div>
     {% endblock footer %}
 
-    {% block feedback %}
-    <!-- gforms feedback tab -->
-        <h5 class="text-center hidden-phone" ><a id="floating_link" href="#feedbackModal" data-toggle="modal" class="bootstro" data-bootstro-title="Feedback" data-bootstro-content="{{"Feedback" | tutorial }}" data-bootstro-step="9" data-bootstro-placement="right" data-bootstro-width="50%"> Feedback</a></h5>
-       
-      <!-- Modal for feedback -->
-      <div id="feedbackModal" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="feedbackModalLabel" aria-hidden="true">
-        <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+    {% if 'GOOGLE_FEEDBACK_FORM_ID' in config %}
+      {% block feedback %}
+      <!-- gforms feedback tab -->
+          <h5 class="text-center hidden-phone" ><a id="floating_link" href="#feedbackModal" data-toggle="modal" class="bootstro" data-bootstro-title="Feedback" data-bootstro-content="{{"Feedback" | tutorial }}" data-bootstro-step="9" data-bootstro-placement="right" data-bootstro-width="50%"> Feedback</a></h5>
+         
+        <!-- Modal for feedback -->
+        <div id="feedbackModal" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+          </div>
+          <div class="modal-body">
+            <iframe title="feedback_form" src="https://docs.google.com/forms/d/{{config['GOOGLE_FEEDBACK_FORM_ID']}}/viewform?embedded=true" width="500" height="390" frameborder="0" marginheight="0" marginwidth="0">Loading...</iframe>
+          </div>
         </div>
-        <div class="modal-body">
-          <iframe title="feedback_form" src="https://docs.google.com/forms/d/1UYbs_Rk9eeK4OAKFpfSQnxPBTQ8DcG7iO6RnIiB6Qaw/viewform?embedded=true" width="500" height="390" frameborder="0" marginheight="0" marginwidth="0">Loading...</iframe>
-        </div>
-      </div>
-    {% endblock feedback %}
+      {% endblock feedback %}
+    {% endif %}
 
-    <script type="text/javascript" src="{{ url_for('static', filename='js/plugins/jquery-1.10.1.min.js') }}"></script> 
     <script type="text/javascript" src="{{ url_for('static', filename='js/plugins/jquery.validate.js') }}"></script>
     <script type="text/javascript" src="{{ url_for('static', filename='js/plugins/bootstrap.js') }}"></script>
     <script type="text/javascript" src="{{ url_for('static', filename='js/custom.js') }}"></script>
